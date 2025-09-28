@@ -1,0 +1,22 @@
+{
+    "name": "ricardohernandezg/janssen-redis",
+    "description": "Redis helper for Janssen",
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Ricardo Hernandez",
+            "email": "ricardohernandezg@gmail.com"
+        }
+    ],
+    "minimum-stability": "dev",
+    "require": {
+        "php": ">= 7.1.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Janssen\\": "src/"
+        },
+        "files": [ "src/Helpers/GlobalRedisFunctions.php" ]
+    }
+}
