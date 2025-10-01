@@ -2,6 +2,8 @@
 
 namespace Janssen\Helpers\Database\Adaptors;
 
+use Janssen\Engine\Config;
+use Janssen\Helpers\Exception;
 use Janssen\Traits\InstanceGetter;
 use Janssen\Traits\StaticCall;
 
@@ -13,8 +15,18 @@ class RedisAdaptor
     private $_cnx;
 
     // conectar al servidor redis
-    public function connect()
-    {}
+    public function connect(string $connection_name)
+    {
+        // get the settings from config
+        $cfg = Config::get('connections')[$connection_name] ?? false;
+        if(!$cfg)
+            throw new Exception("$connection_name is not configured");
+
+        $opt = [
+            'host' => $cfg['db_host']
+        ];
+
+    }
 
     // guardar un valor
 
@@ -22,9 +34,13 @@ class RedisAdaptor
 
     // obtener un valor
 
-    // obtener el objeto redis nativo
+    /**
+     * Returs the connection native object
+     * 
+     * @return Object
+     */
     public function getConnector(){
-        return self::$_cnx;
+        return $this->_cnx;
     }
 
     // borrar todo

@@ -5,7 +5,6 @@ namespace Janssen\Helpers;
 use Janssen\App;
 use Janssen\Engine\Config;
 use Janssen\Engine\Event;
-use Janssen\Helpers\Database;
 use Exception;
 
 /**
@@ -20,9 +19,14 @@ if (!class_exists('Janssen\App')) {
 
 if (!extension_loaded('redis')) {
 
-    throw New \Exception('RBAC needs Redis to work', 500);
+    throw New \Exception('This package needs Redis to work', 500);
 
 } 
+
+Event::listen('app.beforeinit', function(){
+    // push this class into Janssen alias
+    DefaultResolver::append(['redis' => '\Janssen\Helpers\Database\Adaptors\RedisAdaptor']);
+});
 
 Event::listen('app.afterinit', function(){
     // set configuration from rbac file
