@@ -37,8 +37,7 @@ class RedisAdaptor
             'host' => $cfg['host'],
             'port' => $cfg['port'],
             'connectTimeout' => 2.5,
-            'database' => $cfg['db'],
-            'ssl' => ['verify_peer' => false],
+            /*'ssl' => ['verify_peer' => false],*/
             'backoff' => [
                 'algorithm' => Redis::BACKOFF_ALGORITHM_DECORRELATED_JITTER,
                 'base' => 500,
@@ -52,6 +51,7 @@ class RedisAdaptor
 
             if($cnx){
 
+                $cnx->select($cfg['db']);
                 $this->_cnx = $cnx;
 
             }else{
@@ -67,25 +67,95 @@ class RedisAdaptor
         return $this;
     }
 
-    // save a hash value
-    public function setHash(string $key, string $value){
+    // HANDLE TEXT VALUES
+
+    public function setText(){
 
     }
 
-    // saave a JSON value
-    public function setJSON(string $key, string $value){
+    public function getText(){
 
     }
 
-    // get a hash value
+    public function delText(){
+        
+    }
+
+    // HANDLE HASH VALUES
+
+    /**
+     * Set a hash value, mode can be one of this options
+     * 0 - create the key and overwrite if exist (default)
+     * 1 - create the key only if already exists
+     * 2 - create the key only if not exists
+     * 
+     * $ttl is the time to live in miliseconds
+     */
+    public function setHash(string $key, string $value, int $mode = 0, int $ttl = -1){
+
+        $opt = [];
+
+        switch ($mode){
+            case 1:
+                $opt[] = 'xx';
+                break;
+            case 2:
+                $opt[] = 'nx';
+        }
+        
+        if($ttl >= 0) $opt['px'] = $ttl;
+
+        return ($opt) ? $this->_cnx->set($key, $value, $opt) : $this->_cnx->set($key, $value);
+
+    }
+
+    /**
+     * get a hash value
+     */ 
     public function getHash(string $key){
 
     }
 
-    // get a JSON value
-    public function getJSON(string $key, string $path){
+    /**
+     * Delete a hash value
+     */
+    public function delHash(string $key)
+    {
+
+    }
 
 
+    // HANDLE JSON VALUES
+
+    /**
+     * saave a JSON value
+     */ 
+    public function jsonSet(string $key, string $value, string $path = '.'){
+        return $this->_cnx->rawCommand('JSON.SET', $key, $path, $value);
+    }
+
+    /**
+     * get a JSON value
+     */ 
+    public function jsonGet(string $key, string $path = '.'){
+        return $this->_cnx->rawCommand('JSON.GET', $key, $path);
+    }
+
+    /**
+     * delete a JSON value
+     */
+    public function jsonDel(string $key, string $path = '.')
+    {
+        return $this->_cnx->rawCommand('JSON.DEL', $key, $path);
+    }
+
+    /**
+     * returns the type of the value in path
+     * (object, array, string, number, boolean, null)
+     */
+    public function jsonType(string $key, string $path = '.')
+    {
+        return $this->_cnx->rawCommand('JSON.TYPE', $key, $path);
     }
 
     /**
@@ -102,10 +172,12 @@ class RedisAdaptor
         $this->_cnx->flushDb();
     }
 
-    // hacer ping
+    /**
+     * Check if the redis object is connected
+     */
     public function isConnected()
     {
-        return $this->_cnx->ping();
+       return $this->_cnx->isConnected();
     }
     
     /**
@@ -133,6 +205,22 @@ class RedisAdaptor
     public function getLastError()
     {
         return $this->last_error;
+    }
+
+    /**
+     * Change the database to another using its index
+     */
+    public function changeDB(int $newDB)
+    {
+        return $this->_cnx->select($newDB);
+    }
+
+    /**
+     * Get the info from server
+     */
+    public function getInfo()
+    {
+
     }
 
 }

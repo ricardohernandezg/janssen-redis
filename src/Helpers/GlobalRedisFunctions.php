@@ -5,6 +5,7 @@ namespace Janssen\Helpers;
 use Janssen\App;
 use Janssen\Engine\Config;
 use Janssen\Engine\Event;
+use Janssen\Resource\DefaultResolver;
 use Exception;
 
 /**
@@ -30,12 +31,14 @@ Event::listen('app.beforeinit', function(){
 
 Event::listen('app.afterinit', function(){
     // set configuration from rbac file
-    $rbac_conf_candidate = App::getPathCandidate('rbac');
-    Config::append((is_file($rbac_conf_candidate)) ? (include $rbac_conf_candidate) : []);
+    //$rbac_conf_candidate = App::getPathCandidate('rbac');
+    //Config::append((is_file($rbac_conf_candidate)) ? (include $rbac_conf_candidate) : []);
 
     // - read the configuration and check for redis
     // - check for the rbac redis key/values
+
     
+    $redis = new Redis($opt);
 
 
     // check the database scaffolding
