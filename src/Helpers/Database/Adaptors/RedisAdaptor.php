@@ -78,7 +78,8 @@ class RedisAdaptor
     /**
      * Check that $key exists
      */
-    public function keyExists(array $keys): int|bool {
+    public function keyExists(array $keys): int|bool 
+    {
         return $this->_cnx->exists($keys);
     }    
 
@@ -88,6 +89,22 @@ class RedisAdaptor
     public function deleteKey(array $keys): int {
         return $this->_cnx->del($keys);
     }    
+
+    /**
+     * Set expiration in seconds
+     */
+    public function setExpire(string $key, int $ttl): bool
+    {
+        return $this->_cnx->expire($key, $ttl);
+    }
+
+    /**
+     * Set expiration in miliseconds
+     */
+    public function setPexpire(string $key, int $ttl): bool
+    {
+        return $this->_cnx->pexpire($key, $ttl);
+    }
 
     // HANDLE STRING  VALUES
 
@@ -142,31 +159,74 @@ class RedisAdaptor
     public function setHashField(string $key, string $field, string $value, int $mode = 0, int $ttl = -1): int {
         
         $r = false;
+        $apply = false;
 
         switch ($mode){
             case 1:
                 if ($this->keyExists([$key])) {
-
+                    $apply = true;
                 }else
                     return false;
 
                 break;
             case 2:
                 if (!$this->keyExists([$key])) {
-
+                    $apply = true;
                 }else
                     return false;
                 
+                break;
+            default:
+                $apply = true;
         }
         
-        if($ttl >= 0) $opt['px'] = $ttl;
+        if($apply){
+            $r = $this->_cnx->hSet($key, $field, $value);
+            if($r && $ttl > 0) $this->setPexpire($key, $ttl);
+        }
 
-        return $this->_cnx->hSet($key, $field, $value);
+        return $r;
     }
 
-    
-    public function setHashFields(string $key, array $fields): bool {
-        return $this->_cnx->hMSet($key, $fields);
+    /**
+     * Set several values to one hash
+     * 
+     * $mode can be one of this options
+     * 0 - create the key and overwrite if exist (default)
+     * 1 - create the key only if already exists
+     * 2 - create the key only if not exists
+     * 
+     * $ttl is the time to live in miliseconds. -1 is permanent (default)
+     */
+    public function setHashFields(string $key, array $fields, int $mode = 0, int $ttl = -1): bool {
+        $r = false;
+        $apply = false;
+
+        switch ($mode){
+            case 1:
+                if ($this->keyExists([$key])) {
+                    $apply = true;
+                }else
+                    return false;
+
+                break;
+            case 2:
+                if (!$this->keyExists([$key])) {
+                    $apply = true;
+                }else
+                    return false;
+                
+                break;
+            default:
+                $apply = true;
+        }
+        
+        if($apply){
+            $r = $this->_cnx->hMSet($key, $fields);
+            if($r && $ttl > 0) $this->setPexpire($key, $ttl);
+        }
+
+        return $r;
     }
 
     /**
@@ -184,12 +244,119 @@ class RedisAdaptor
         return $this->_cnx->hGetAll($key);
     }
 
+    // HANDLE LISTS
 
+    public function pushToList(string $key, string $value, bool $left = true): int {
+        return $left ? $this->_cnx->lPush($key, $value) : $this->_cnx->rPush($key, $value);
+    }
+    public function popFromList(string $key, bool $left = true): ?string {
+        $val = $left ? $this->_cnx->lPop($key) : $this->_cnx->rPop($key);
+        return $val === false ? null : $val;
+    }
+    public function getListRange(string $key, int $start = 0, int $end = -1): array {
+        return $this->_cnx->lRange($key, $start, $end);
+    }
     
+    // HANDLE SETS
 
+    public function addToSet(string $key, string ...$members): int {
+        return $this->_cnx->sAdd($key, ...$members);
+    }
+    public function removeFromSet(string $key, string ...$members): int {
+        return $this->_cnx->sRem($key, ...$members);
+    }
+    public function isMemberOfSet(string $key, string $member): bool {
+        return $this->_cnx->sIsMember($key, $member);
+    }
+    public function getSetMembers(string $key): array {
+        return $this->_cnx->sMembers($key);
+    }
+
+    // HANDLE SORTED SETS
+
+    public function addToZSet(string $key, float $score, string $member): int {
+        return $this->_cnx->zAdd($key, $score, $member);
+    }
+    public function removeFromZSet(string $key, string $member): int {
+        return $this->_cnx->zRem($key, $member);
+    }
+    public function getZSetRange(string $key, int $start = 0, int $end = -1, bool $withScores = false): array {
+        return $withScores ? $this->_cnx->zRange($key, $start, $end, true) : $this->_cnx->zRange($key, $start, $end);
+    }
+    public function getZSetRevRange(string $key, int $start = 0, int $end = -1, bool $withScores = false): array {
+        return $withScores ? $this->_cnx->zRevRange($key, $start, $end, true) : $this->_cnx->zRevRange($key, $start, $end);
+    }
+
+    // HANDLE HYPERLOGLOG 
 
     /**
-     * Returs the connection native object
+     * HyperLogLog en Redis es una estructura de datos probabilística que estima la cardinalidad (cantidad de elementos únicos) 
+     * de un conjunto. A diferencia de otras estructuras que requieren almacenar todos los elementos para contar los únicos, 
+     * HyperLogLog utiliza una cantidad fija y muy pequeña de memoria (hasta 12 KB) para proporcionar una estimación con un 
+     * margen de error estándar alrededor del 0.81%. Esto lo hace muy eficiente para contar valores únicos en grandes volúmenes 
+     * de datos sin almacenar los datos originales.
+     * 
+     * Usos comunes
+     * - Contar visitantes únicos en un sitio web.
+     * - Contar IPs únicas en logs.
+     * - Medir usuarios activos o eventos únicos sin consumir gran cantidad de memoria.
+     *
+     */
+    public function addToHyperLogLog(string $key, string ...$elements): bool {
+        return $this->_cnx->pfAdd($key, ...$elements);
+    }
+    public function countHyperLogLog(string $key): int {
+        return $this->_cnx->pfCount($key);
+    }
+    public function mergeHyperLogLogs(string $destKey, array $sourceKeys): bool {
+        return $this->_cnx->pfMerge($destKey, ...$sourceKeys);
+    }
+
+    // HANDLE GEOLOCALIZATION
+    /**
+     * La geolocalización en Redis es una funcionalidad que permite almacenar, consultar y 
+     * manipular datos geoespaciales (coordenadas geográficas) de forma eficiente. 
+     * Redis usa estructuras de datos internas basadas en conjuntos ordenados para guardar 
+     * ubicaciones con latitud y longitud, y provee comandos especializados para agregar 
+     * puntos geográficos, calcular distancias, obtener zonas de proximidad alrededor de un punto, y ordenar ubicaciones por cercanía.
+     * 
+     * Usos comunes
+     * - Rastreo en tiempo real de ubicaciones.
+     * - Búsqueda de puntos de interés cercanos a una ubicación dada.
+     * - Sistemas de seguimiento y geocercas que alertan cuando un objeto o usuario entra o sale de un área definida.
+     * - Aplicaciones de marketing local que segmentan campañas y promociones según la ubicación geográfica de los usuarios.
+     * - Redes sociales y aplicaciones móviles que permiten etiquetar ubicaciones.
+     * - Gestión de inventarios o recursos distribuidos geográficamente para optimizar rutas o asignación en función de la distancia.
+     * 
+     */
+    public function geoAdd(string $key, float $longitude, float $latitude, string $member): int {
+        return $this->_cnx->geoAdd($key, $longitude, $latitude, $member);
+    }
+
+    public function geoDist(string $key, string $member1, string $member2, string $unit = 'm'): ?float {
+        $dist = $this->_cnx->geoDist($key, $member1, $member2, $unit);
+        return $dist === false ? null : $dist;
+    }
+
+    public function geoRadius(string $key, float $longitude, float $latitude, float $radius, string $unit = 'm', int $count = 0, bool $withDist = false): array {
+        return $this->_cnx->georadius($key, $longitude, $latitude, $radius, $unit, ['COUNT' => $count ?: null, 'WITHDIST' => $withDist]);
+    }
+
+    // HANDLE JSON WITH REDISJSON
+    public function jsonSet(string $key, string $path, $json): bool {
+        return $this->_cnxjson->set($key, $path, $json);
+    }
+
+    public function jsonGet(string $key, string $path = '.'): mixed {
+        return $this->_cnxjson->get($key, $path);
+    }
+
+    public function jsonDel(string $key, string $path = '.'): int {
+        return $this->_cnxjson->del($key, $path);
+    }
+
+    /**
+     * Returns the connection native object
      * 
      * @return Object
      */
@@ -250,105 +417,7 @@ class RedisAdaptor
      */
     public function getInfo()
     {
-
+        return $this->_cnx->rawCommand("INFO", "server");
     }
 
-}
-
-// Usamos la clase Redis para conexión y RedisJSON con un cliente compatible
-
-class RedisExtendedHandler {
-    private Redis $redis;
-    private RedisJson $redisJson;
-
-
-
-    // ---- Hash ----
-    public function setHashField(string $key, string $field, string $value): int {
-        return $this->redis->hSet($key, $field, $value);
-    }
-    public function setHashFields(string $key, array $fields): bool {
-        return $this->redis->hMSet($key, $fields);
-    }
-    public function getHashField(string $key, string $field): ?string {
-        $val = $this->redis->hGet($key, $field);
-        return $val === false ? null : $val;
-    }
-    public function getHashAll(string $key): array {
-        return $this->redis->hGetAll($key);
-    }
-
-    // ---- List ----
-    public function pushToList(string $key, string $value, bool $left = true): int {
-        return $left ? $this->redis->lPush($key, $value) : $this->redis->rPush($key, $value);
-    }
-    public function popFromList(string $key, bool $left = true): ?string {
-        $val = $left ? $this->redis->lPop($key) : $this->redis->rPop($key);
-        return $val === false ? null : $val;
-    }
-    public function getListRange(string $key, int $start = 0, int $end = -1): array {
-        return $this->redis->lRange($key, $start, $end);
-    }
-
-    // ---- Set ----
-    public function addToSet(string $key, string ...$members): int {
-        return $this->redis->sAdd($key, ...$members);
-    }
-    public function removeFromSet(string $key, string ...$members): int {
-        return $this->redis->sRem($key, ...$members);
-    }
-    public function isMemberOfSet(string $key, string $member): bool {
-        return $this->redis->sIsMember($key, $member);
-    }
-    public function getSetMembers(string $key): array {
-        return $this->redis->sMembers($key);
-    }
-
-    // ---- Sorted Set (ZSet) ----
-    public function addToZSet(string $key, float $score, string $member): int {
-        return $this->redis->zAdd($key, $score, $member);
-    }
-    public function removeFromZSet(string $key, string $member): int {
-        return $this->redis->zRem($key, $member);
-    }
-    public function getZSetRange(string $key, int $start = 0, int $end = -1, bool $withScores = false): array {
-        return $withScores ? $this->redis->zRange($key, $start, $end, true) : $this->redis->zRange($key, $start, $end);
-    }
-    public function getZSetRevRange(string $key, int $start = 0, int $end = -1, bool $withScores = false): array {
-        return $withScores ? $this->redis->zRevRange($key, $start, $end, true) : $this->redis->zRevRange($key, $start, $end);
-    }
-
-    // ---- HyperLogLog ----
-    public function addToHyperLogLog(string $key, string ...$elements): bool {
-        return $this->redis->pfAdd($key, ...$elements);
-    }
-    public function countHyperLogLog(string $key): int {
-        return $this->redis->pfCount($key);
-    }
-    public function mergeHyperLogLogs(string $destKey, array $sourceKeys): bool {
-        return $this->redis->pfMerge($destKey, ...$sourceKeys);
-    }
-
-    // ---- Geo ----
-    public function geoAdd(string $key, float $longitude, float $latitude, string $member): int {
-        return $this->redis->geoAdd($key, $longitude, $latitude, $member);
-    }
-    public function geoDist(string $key, string $member1, string $member2, string $unit = 'm'): ?float {
-        $dist = $this->redis->geoDist($key, $member1, $member2, $unit);
-        return $dist === false ? null : $dist;
-    }
-    public function geoRadius(string $key, float $longitude, float $latitude, float $radius, string $unit = 'm', int $count = 0, bool $withDist = false): array {
-        return $this->redis->georadius($key, $longitude, $latitude, $radius, $unit, ['COUNT' => $count ?: null, 'WITHDIST' => $withDist]);
-    }
-
-    // ---- RedisJSON ----
-    public function jsonSet(string $key, string $path, $json): bool {
-        return $this->redisJson->set($key, $path, $json);
-    }
-    public function jsonGet(string $key, string $path = '.'): mixed {
-        return $this->redisJson->get($key, $path);
-    }
-    public function jsonDel(string $key, string $path = '.'): int {
-        return $this->redisJson->del($key, $path);
-    }
 }
