@@ -7,6 +7,7 @@ use Janssen\Engine\Config;
 use Janssen\Engine\Event;
 use Janssen\Resource\DefaultResolver;
 use Exception;
+use Redis;
 
 /**
  * add the alias to DefaultResolver to use the adaptor provided 
@@ -37,7 +38,7 @@ Event::listen('app.afterinit', function(){
     // - read the configuration and check for redis
     // - check for the rbac redis key/values
 
-    
+    $opt = [];
     $redis = new Redis($opt);
 
 
