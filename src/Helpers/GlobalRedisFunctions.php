@@ -36,7 +36,6 @@ Event::listen('app.afterinit', function(){
     //Config::append((is_file($rbac_conf_candidate)) ? (include $rbac_conf_candidate) : []);
 
     // - read the configuration and check for redis
-    // - check for the rbac redis key/values
 
     $opt = [];
     $redis = new Redis($opt);
