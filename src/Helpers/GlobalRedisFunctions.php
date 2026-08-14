@@ -38,7 +38,7 @@ Event::listen('app.afterinit', function(){
     // - check for the rbac redis key/values
 
     
-    $redis = new Redis($opt);
+    $redis = new \Redis();
 
 
     // check the database scaffolding
